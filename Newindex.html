@@ -1,0 +1,3316 @@
+import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { User, Briefcase, Pencil, Check, X } from 'lucide-react';
+import { updateProfile, getAllEmployees, syncProfileFromSheet } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { useGetAllEmployees } from '@/server';
+import { RefreshCw } from 'lucide-react';
+
+const DEPARTMENTS = [
+  'Nursing', 'OPD', 'Laboratory', 'Pharmacy', 'Radiology',
+  'Surgery', 'ICU', 'Administration', 'Finance', 'HR', 'Maintenance',
+];
+
+interface Props {
+  user: any;
+  onUpdate: (u: any) => void;
+}
+
+export default function BioTab({ user, onUpdate }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const { data: employees = [] } = useGetAllEmployees();
+
+  const handleSyncFromSheet = async () => {
+    setSyncing(true);
+    try {
+      const updated = await syncProfileFromSheet();
+      toast.success('Profile synced from Google Sheet!');
+      onUpdate({ ...user, ...updated });
+    } catch (err) {
+      captureError(err as Error);
+      toast.error((err as Error).message || 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const [form, setForm] = useState({
+    phone: user.phone || '',
+    gender: user.gender || '',
+    dob: user.dob || '',
+    department: user.department || '',
+    designation: user.designation || '',
+    employeeType: user.employeeType || 'Permanent',
+    managerId: user.managerId ? String(user.managerId) : '',
+  });
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateProfile({
+        phone: form.phone,
+        gender: form.gender,
+        dob: form.dob,
+        department: form.department,
+        designation: form.designation,
+        employeeType: form.employeeType,
+        managerId: form.managerId ? parseInt(form.managerId) : undefined,
+      });
+      toast.success('Profile updated successfully');
+      onUpdate({ ...user, ...updated });
+      setEditing(false);
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const managers = employees.filter((e: any) => e.id !== user.id);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold text-primary">
+            {user.firstName} {user.lastName}
+          </h1>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary" className="text-sm">{user.designation || 'Employee'}</Badge>
+            {user.employeeId && (
+              <span className="text-sm font-mono text-muted-foreground">{user.employeeId}</span>
+            )}
+          </div>
+        </div>
+        {!editing ? (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleSyncFromSheet} disabled={syncing}>
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync from Sheet'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil size={14} /> Edit Profile
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+              <X size={14} /> Cancel
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Check size={14} /> {saving ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Personal Details */}
+        <Card>
+          <CardHeader className="bg-muted/30 border-b pb-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User size={18} className="text-primary" /> Personal Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <DetailRow label="Employee ID" value={user.employeeId || '—'} mono />
+            <DetailRow label="Email" value={user.email} />
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Phone Number</Label>
+                <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+254 7XX XXX XXX" />
+              </div>
+            ) : <DetailRow label="Phone Number" value={user.phone || '—'} />}
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Gender</Label>
+                <Select value={form.gender} onValueChange={v => setForm({ ...form, gender: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : <DetailRow label="Gender" value={user.gender || '—'} />}
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Date of Birth</Label>
+                <Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} />
+              </div>
+            ) : <DetailRow label="Date of Birth" value={user.dob || '—'} />}
+          </CardContent>
+        </Card>
+
+        {/* Employment Details */}
+        <Card>
+          <CardHeader className="bg-muted/30 border-b pb-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Briefcase size={18} className="text-primary" /> Employment Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Department</Label>
+                <Select value={form.department} onValueChange={v => setForm({ ...form, department: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : <DetailRow label="Department" value={user.department || '—'} />}
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Designation</Label>
+                <Input value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} placeholder="e.g. Senior Nurse" />
+              </div>
+            ) : <DetailRow label="Designation" value={user.designation || '—'} />}
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Manager</Label>
+                <Select value={form.managerId} onValueChange={v => setForm({ ...form, managerId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No Manager</SelectItem>
+                    {managers.map((m: any) => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        {m.firstName} {m.lastName} ({m.designation || m.department})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <DetailRow
+                label="Manager"
+                value={managers.find((m: any) => m.id === user.managerId)
+                  ? `${(managers.find((m: any) => m.id === user.managerId) as any).firstName} ${(managers.find((m: any) => m.id === user.managerId) as any).lastName}`
+                  : '—'}
+              />
+            )}
+            {editing ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-sm">Employee Type</Label>
+                <Select value={form.employeeType} onValueChange={v => setForm({ ...form, employeeType: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Permanent">Permanent</SelectItem>
+                    <SelectItem value="Locum">Locum</SelectItem>
+                    <SelectItem value="Expat">Expat</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center border-b pb-3">
+                <span className="text-muted-foreground text-sm">Employee Type</span>
+                <Badge variant="outline">{user.employeeType || 'Permanent'}</Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between items-center border-b pb-3 last:border-0 last:pb-0">
+      <span className="text-muted-foreground text-sm">{label}</span>
+      <span className={`font-semibold text-sm ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  );
+}
+import React, { useRef, useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Files, Upload, Download, Trash2, CheckCircle, Loader2 } from 'lucide-react';
+import { useGetMyDocuments, deleteDocument, uploadDocument } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { cn } from '@/lib/utils';
+
+const DOC_TYPES = [
+  'Employee Contract', 'CV/Resume', 'Academic Documents',
+  'License', 'National ID/Passport', 'KRA', 'SHIF', 'NSSF', 'Bank Form',
+];
+
+export default function DocumentsTab() {
+  const { data: docs = [], loading, refetch, mutate } = useGetMyDocuments();
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const getDoc = (type: string) => (docs as any[]).find(d => d.docType === type);
+
+  const handleUpload = async (docType: string, file: File) => {
+    setUploading(u => ({ ...u, [docType]: true }));
+    try {
+      await (uploadDocument as any)(docType, file);
+      toast.success(`${docType} uploaded successfully`);
+      refetch();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error(`Failed to upload ${docType}`);
+    } finally {
+      setUploading(u => ({ ...u, [docType]: false }));
+    }
+  };
+
+  const handleDelete = async (doc: any) => {
+    mutate((prev: any) => (prev || []).filter((d: any) => d.id !== doc.id));
+    try {
+      await deleteDocument({ docId: doc.id });
+      toast.success('Document deleted');
+    } catch (err) {
+      captureError(err as Error);
+      refetch();
+      toast.error('Failed to delete document');
+    }
+  };
+
+  const handleDownload = async (doc: any) => {
+    try {
+      window.open(doc.url, '_blank');
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to download document');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-primary">Employee Documents</h2>
+        <p className="text-muted-foreground text-sm mt-1">Upload and manage your official documents. Accepted: PDF, JPG, PNG (max 10MB)</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {DOC_TYPES.map((docType) => {
+          const doc = getDoc(docType);
+          const isUploading = uploading[docType];
+          return (
+            <Card
+              key={docType}
+              className={cn(
+                'overflow-hidden transition-all',
+                doc ? 'border-green-200 bg-green-50/30' : 'hover:border-primary/50',
+              )}
+            >
+              <CardContent className="p-5 flex flex-col items-center text-center gap-3">
+                <div className={cn(
+                  'p-3 rounded-full',
+                  doc ? 'bg-green-100 text-green-600' : 'bg-muted/50 text-muted-foreground'
+                )}>
+                  {doc ? <CheckCircle size={28} /> : <Files size={28} />}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">{docType}</h3>
+                  {doc ? (
+                    <p className="text-xs text-muted-foreground mt-1 truncate max-w-[140px]">{doc.fileName}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-0.5">Not uploaded</p>
+                  )}
+                </div>
+
+                {doc ? (
+                  <div className="flex gap-2 w-full">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => handleDownload(doc)}>
+                      <Download size={13} /> Download
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-red-50"
+                      onClick={() => handleDelete(doc)}
+                    >
+                      <Trash2 size={13} />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={isUploading}
+                    onClick={() => fileInputRefs.current[docType]?.click()}
+                  >
+                    {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                    {isUploading ? 'Uploading...' : 'Upload'}
+                  </Button>
+                )}
+
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  ref={el => { fileInputRefs.current[docType] = el; }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUpload(docType, file);
+                    e.target.value = '';
+                  }}
+                />
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { MapPin, Clock, AlertCircle, CheckCircle2, Wifi } from 'lucide-react';
+import { useGetGeofenceSettings, useGetTodayAttendance, clockIn, clockOut } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { cn } from '@/lib/utils';
+
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export default function HomeTab() {
+  const { data: geofence } = useGetGeofenceSettings();
+  const { data: todayRecord, refetch: refetchToday } = useGetTodayAttendance();
+  const [locationStatus, setLocationStatus] = useState<'checking' | 'inside' | 'outside' | 'denied'>('checking');
+  const [loading, setLoading] = useState(false);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!geofence) return;
+    if (!navigator.geolocation) {
+      setLocationStatus('denied');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const dist = getDistanceMeters(
+          pos.coords.latitude, pos.coords.longitude,
+          geofence.latitude, geofence.longitude,
+        );
+        setLocationStatus(dist <= geofence.radiusMeters ? 'inside' : 'outside');
+      },
+      () => setLocationStatus('denied'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [geofence]);
+
+  const handleClockIn = async () => {
+    if (locationStatus !== 'inside') {
+      toast.error('You must be within the hospital vicinity to clock in.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await clockIn();
+      toast.success('Clocked in successfully!');
+      refetchToday();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error((err as Error).message || 'Failed to clock in');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (locationStatus !== 'inside') {
+      toast.error('You must be within the hospital vicinity to clock out.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await clockOut();
+      toast.success('Clocked out successfully!');
+      refetchToday();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error((err as Error).message || 'Failed to clock out');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isInside = locationStatus === 'inside';
+  const hasClockedIn = !!todayRecord?.clockIn;
+  const hasClockedOut = !!todayRecord?.clockOut;
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6">
+      {/* Clock */}
+      <div className="text-center">
+        <div className="text-5xl font-bold text-primary font-mono">
+          {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </div>
+        <div className="text-muted-foreground mt-1">
+          {now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+      </div>
+
+      <Card className="w-full max-w-md">
+        <CardContent className="p-8 space-y-6">
+          {/* Location status */}
+          <div className={cn(
+            'flex items-center gap-3 p-4 rounded-xl border',
+            locationStatus === 'inside' ? 'bg-green-50 border-green-200 text-green-700' :
+            locationStatus === 'outside' ? 'bg-red-50 border-red-200 text-red-700' :
+            locationStatus === 'denied' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+            'bg-slate-50 border-slate-200 text-slate-600'
+          )}>
+            {locationStatus === 'checking' ? <Wifi size={24} className="animate-pulse" /> :
+             locationStatus === 'inside' ? <CheckCircle2 size={24} /> :
+             <AlertCircle size={24} />}
+            <div>
+              <div className="font-semibold">
+                {locationStatus === 'checking' ? 'Checking location...' :
+                 locationStatus === 'inside' ? 'Within Hospital Vicinity' :
+                 locationStatus === 'outside' ? 'Outside Permitted Range' :
+                 'Location Access Denied'}
+              </div>
+              <div className="text-xs mt-0.5 opacity-80">
+                {locationStatus === 'outside' && geofence
+                  ? `Must be within ${geofence.radiusMeters}m of hospital` :
+                 locationStatus === 'denied'
+                  ? 'Enable location in browser settings'
+                  : geofence ? `Radius: ${geofence.radiusMeters}m` : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Today's record */}
+          {todayRecord && (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="bg-slate-50 p-3 rounded-lg text-center">
+                <div className="text-muted-foreground text-xs">Clock In</div>
+                <div className="font-bold text-lg">{todayRecord.clockIn || '—'}</div>
+              </div>
+              <div className="bg-slate-50 p-3 rounded-lg text-center">
+                <div className="text-muted-foreground text-xs">Clock Out</div>
+                <div className="font-bold text-lg">{todayRecord.clockOut || '—'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Clock buttons */}
+          <div className="grid grid-cols-2 gap-4">
+            <Button
+              size="lg"
+              className="h-20 flex flex-col gap-1 text-base"
+              disabled={!isInside || hasClockedIn || loading}
+              onClick={handleClockIn}
+            >
+              <Clock size={24} />
+              Clock In
+            </Button>
+            <Button
+              size="lg"
+              variant="secondary"
+              className="h-20 flex flex-col gap-1 text-base"
+              disabled={!isInside || !hasClockedIn || hasClockedOut || loading}
+              onClick={handleClockOut}
+            >
+              <Clock size={24} />
+              Clock Out
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Calendar } from 'lucide-react';
+import { useGetLeaveBalances, useGetMyLeaveRequests, applyLeave } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { cn } from '@/lib/utils';
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-amber-50 text-amber-700 border-amber-300',
+  manager_approved: 'bg-blue-50 text-blue-700 border-blue-300',
+  approved: 'bg-green-50 text-green-700 border-green-300',
+  rejected: 'bg-red-50 text-red-700 border-red-300',
+};
+
+export default function LeaveTab() {
+  const { data: balances = [], loading, refetch } = useGetLeaveBalances();
+  const { data: requests = [], refetch: refetchRequests } = useGetMyLeaveRequests();
+  const [applying, setApplying] = useState<any>(null);
+  const [form, setForm] = useState({ startDate: '', endDate: '', reason: '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleApply = async () => {
+    if (!form.startDate || !form.endDate) {
+      toast.error('Please select start and end dates');
+      return;
+    }
+    setSaving(true);
+    try {
+      await applyLeave({ leaveTypeId: applying.leaveTypeId, startDate: form.startDate, endDate: form.endDate, reason: form.reason });
+      toast.success('Leave request submitted successfully');
+      setApplying(null);
+      setForm({ startDate: '', endDate: '', reason: '' });
+      refetchRequests();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to submit leave request');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <h2 className="text-2xl font-bold text-primary">Leave Management</h2>
+
+      {/* Leave cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i} className="animate-pulse h-40 bg-muted" />
+          ))
+        ) : balances.map((b: any) => (
+          <Card key={b.id} className="overflow-hidden border-l-4 border-l-primary">
+            <CardHeader className="bg-muted/30 border-b pb-3 pt-4">
+              <CardTitle className="text-base">{b.leaveTypeName}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 pb-3">
+              <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4">
+                <div className="bg-muted/40 p-2 rounded-lg">
+                  <div className="text-muted-foreground text-xs">Accrued</div>
+                  <div className="font-bold text-lg">{b.accrued}</div>
+                </div>
+                <div className="bg-muted/40 p-2 rounded-lg">
+                  <div className="text-muted-foreground text-xs">Used</div>
+                  <div className="font-bold text-lg">{b.utilized}</div>
+                </div>
+                <div className="bg-primary/10 p-2 rounded-lg">
+                  <div className="text-primary text-xs font-medium">Balance</div>
+                  <div className="font-bold text-lg text-primary">{b.balance}</div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={b.balance <= 0}
+                onClick={() => setApplying(b)}
+              >
+                <Plus size={14} /> Apply
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* My requests */}
+      {requests.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Calendar size={18} className="text-primary" /> My Leave Requests
+          </h3>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-left">Start</th>
+                    <th className="p-3 text-left">End</th>
+                    <th className="p-3 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {requests.map((r: any) => (
+                    <tr key={r.id} className="hover:bg-muted/20">
+                      <td className="p-3 font-medium">{r.leaveTypeName}</td>
+                      <td className="p-3">{r.startDate}</td>
+                      <td className="p-3">{r.endDate}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className={cn('text-xs capitalize', STATUS_COLORS[r.status] || '')}>
+                          {r.status.replace('_', ' ')}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Apply dialog */}
+      <Dialog open={!!applying} onOpenChange={() => setApplying(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply for {applying?.leaveTypeName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Textarea placeholder="Brief reason for leave..." value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApplying(null)}>Cancel</Button>
+            <Button onClick={handleApply} disabled={saving}>{saving ? 'Submitting...' : 'Submit Request'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useGetMyAttendance } from '@/server';
+import { cn } from '@/lib/utils';
+
+const STATUS_COLORS: Record<string, string> = {
+  present: 'bg-green-500',
+  absent: 'bg-red-400',
+  'out-duty': 'bg-amber-400',
+  'on-leave': 'bg-blue-400',
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  present: 'text-green-700 border-green-300 bg-green-50',
+  absent: 'text-red-700 border-red-300 bg-red-50',
+  'out-duty': 'text-amber-700 border-amber-300 bg-amber-50',
+  'on-leave': 'text-blue-700 border-blue-300 bg-blue-50',
+};
+
+export default function LogsTab() {
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+
+  const { data: records = [], loading } = useGetMyAttendance({ year, month });
+
+  const recordMap: Record<string, any> = {};
+  records.forEach(r => { recordMap[r.date] = r; });
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDayOfWeek = new Date(year, month - 1, 1).getDay();
+
+  const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const navigate = (dir: number) => {
+    let m = month + dir;
+    let y = year;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    setMonth(m); setYear(y);
+  };
+
+  const allDates = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = String(i + 1).padStart(2, '0');
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${d}`;
+    return { day: i + 1, dateStr, record: recordMap[dateStr] };
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-primary">Attendance Logs</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => navigate(-1)}><ChevronLeft size={16} /></Button>
+          <span className="font-semibold min-w-40 text-center">{monthName}</span>
+          <Button variant="outline" size="icon" onClick={() => navigate(1)}><ChevronRight size={16} /></Button>
+        </div>
+      </div>
+
+      {/* Calendar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <div key={d} className="text-center text-xs font-bold text-muted-foreground py-1">{d}</div>
+            ))}
+            {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
+            {allDates.map(({ day, dateStr, record }) => {
+              const status = record?.status;
+              const isToday = dateStr === today.toISOString().split('T')[0];
+              return (
+                <div
+                  key={dateStr}
+                  className={cn(
+                    'aspect-square flex flex-col items-center justify-center rounded-lg text-xs border',
+                    isToday ? 'border-primary ring-2 ring-primary/30' : 'border-transparent',
+                    !status && 'bg-slate-50',
+                  )}
+                >
+                  <span className={cn('font-medium', isToday && 'text-primary font-bold')}>{day}</span>
+                  {status && <div className={cn('w-2 h-2 rounded-full mt-0.5', STATUS_COLORS[status])} />}
+                </div>
+              );
+            })}
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t">
+            {Object.entries(STATUS_COLORS).map(([s, color]) => (
+              <div key={s} className="flex items-center gap-1.5 text-xs capitalize">
+                <div className={cn('w-3 h-3 rounded-full', color)} />
+                {s.replace('-', ' ')}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading...</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-primary text-primary-foreground">
+                  <th className="p-3 text-left">Date</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left">Clock In (24h)</th>
+                  <th className="p-3 text-left">Clock Out (24h)</th>
+                  <th className="p-3 text-left">Total Hours</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {allDates.map(({ day, dateStr, record }) => (
+                  <tr key={dateStr} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-3">{dateStr}</td>
+                    <td className="p-3">
+                      {record ? (
+                        <Badge variant="outline" className={cn('text-xs capitalize', STATUS_BADGE[record.status])}>
+                          {record.status.replace('-', ' ')}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="p-3 font-mono">{record?.clockIn || '—'}</td>
+                    <td className="p-3 font-mono">{record?.clockOut || '—'}</td>
+                    <td className="p-3 font-mono">{record?.totalHours != null ? `${record.totalHours}h` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Briefcase, Clock } from 'lucide-react';
+import { useGetMyOutDutyRequests, applyOutDuty } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { cn } from '@/lib/utils';
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-amber-50 text-amber-700 border-amber-300',
+  manager_approved: 'bg-blue-50 text-blue-700 border-blue-300',
+  approved: 'bg-green-50 text-green-700 border-green-300',
+  rejected: 'bg-red-50 text-red-700 border-red-300',
+};
+
+export default function OutDutyTab() {
+  const { data: requests = [], loading, refetch } = useGetMyOutDutyRequests();
+  const [form, setForm] = useState({ startDate: '', endDate: '', purpose: '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.purpose.trim()) { toast.error('Please describe the purpose'); return; }
+    setSaving(true);
+    try {
+      await applyOutDuty({ startDate: form.startDate, endDate: form.endDate, purpose: form.purpose });
+      toast.success('Out-duty request submitted successfully');
+      setForm({ startDate: '', endDate: '', purpose: '' });
+      refetch();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to submit request');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <h2 className="text-2xl font-bold text-primary">Out Duty Requests</h2>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Form */}
+        <Card>
+          <CardHeader className="bg-muted/30 border-b">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Briefcase size={18} className="text-primary" /> New Out-Duty Request
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Purpose of Visit</Label>
+                <Textarea
+                  placeholder="Describe the reason for being out of office..."
+                  value={form.purpose}
+                  onChange={e => setForm({ ...form, purpose: e.target.value })}
+                  rows={4}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Date</Label>
+                  <Input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Date</Label>
+                  <Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} required />
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={saving}>
+                <Plus size={16} /> {saving ? 'Submitting...' : 'Submit Request'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Requests history */}
+        <div>
+          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+            <Clock size={16} className="text-primary" /> My Requests
+          </h3>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2].map(i => <Card key={i} className="h-20 animate-pulse bg-muted" />)}
+            </div>
+          ) : requests.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No out-duty requests yet.</Card>
+          ) : (
+            <div className="space-y-3">
+              {requests.map((r: any) => (
+                <Card key={r.id}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{r.purpose}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{r.startDate} → {r.endDate}</p>
+                      </div>
+                      <Badge variant="outline" className={cn('text-xs shrink-0', STATUS_COLORS[r.status])}>
+                        {r.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
+import { useGetAdminAttendanceSummary } from '@/server';
+import { captureError } from '@aha-app/builder-core';
+import { toast } from 'sonner';
+
+function exportToCSV(data: any[], filename: string) {
+  if (!data.length) { toast.error('No data to export'); return; }
+  const headers = Object.keys(data[0]);
+  const rows = data.map(row => headers.map(h => `"${row[h] ?? ''}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function ReportsTab() {
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const { data: summary = [], loading } = useGetAdminAttendanceSummary({ year, month });
+
+  const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const navigate = (dir: number) => {
+    let m = month + dir, y = year;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    setMonth(m); setYear(y);
+  };
+
+  const exportSummary = () => {
+    const rows = (summary as any[]).map(s => ({
+      'Employee ID': s.employee.employeeId || '—',
+      'Name': `${s.employee.firstName} ${s.employee.lastName}`,
+      'Department': s.employee.department || '—',
+      'Designation': s.employee.designation || '—',
+      'Present Days': s.present,
+      'Absent Days': s.absent,
+      'Leave Days': s.leave,
+      'Out Duty/WFH': s.outduty,
+    }));
+    exportToCSV(rows, `attendance_summary_${year}_${month}.csv`);
+  };
+
+  const exportDatewise = () => {
+    const rows = (summary as any[]).map(s => ({
+      'Employee ID': s.employee.employeeId || '—',
+      'Name': `${s.employee.firstName} ${s.employee.lastName}`,
+      'Department': s.employee.department || '—',
+      'Designation': s.employee.designation || '—',
+      'Total Hours': s.totalHours,
+      'Avg Daily Hours': s.avgHours,
+    }));
+    exportToCSV(rows, `datewise_attendance_${year}_${month}.csv`);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h2 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <BarChart3 size={24} /> Reports
+        </h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => navigate(-1)}><ChevronLeft size={16} /></Button>
+          <span className="font-semibold min-w-36 text-center text-sm">{monthName}</span>
+          <Button variant="outline" size="icon" onClick={() => navigate(1)}><ChevronRight size={16} /></Button>
+        </div>
+      </div>
+
+      <Tabs defaultValue="summary">
+        <TabsList>
+          <TabsTrigger value="summary">Work Duration Summary</TabsTrigger>
+          <TabsTrigger value="datewise">Date-wise Report</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="summary" className="mt-4">
+          <div className="flex justify-end mb-3">
+            <Button variant="outline" size="sm" onClick={exportSummary}>
+              <Download size={14} /> Export to CSV
+            </Button>
+          </div>
+          <Card>
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="p-8 text-center text-muted-foreground">Loading...</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary text-primary-foreground">
+                      <th className="p-3 text-left">Emp ID</th>
+                      <th className="p-3 text-left">Name</th>
+                      <th className="p-3 text-left">Dept</th>
+                      <th className="p-3 text-left">Designation</th>
+                      <th className="p-3 text-center">Present</th>
+                      <th className="p-3 text-center">Absent</th>
+                      <th className="p-3 text-center">Leave</th>
+                      <th className="p-3 text-center">Out/WFH</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(summary as any[]).length === 0 ? (
+                      <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No employee data found</td></tr>
+                    ) : (summary as any[]).map((s: any) => (
+                      <tr key={s.employee.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-3 font-mono text-xs">{s.employee.employeeId || '—'}</td>
+                        <td className="p-3 font-medium">{s.employee.firstName} {s.employee.lastName}</td>
+                        <td className="p-3">{s.employee.department || '—'}</td>
+                        <td className="p-3">{s.employee.designation || '—'}</td>
+                        <td className="p-3 text-center text-green-600 font-bold">{s.present}</td>
+                        <td className="p-3 text-center text-red-500">{s.absent}</td>
+                        <td className="p-3 text-center text-blue-600">{s.leave}</td>
+                        <td className="p-3 text-center text-amber-600">{s.outduty}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="datewise" className="mt-4">
+          <div className="flex justify-end mb-3">
+            <Button variant="outline" size="sm" onClick={exportDatewise}>
+              <FileSpreadsheet size={14} /> Export to CSV
+            </Button>
+          </div>
+          <Card>
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="p-8 text-center text-muted-foreground">Loading...</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary text-primary-foreground">
+                      <th className="p-3 text-left">Emp ID</th>
+                      <th className="p-3 text-left">Name</th>
+                      <th className="p-3 text-left">Dept</th>
+                      <th className="p-3 text-left">Designation</th>
+                      <th className="p-3 text-right">Total Hours</th>
+                      <th className="p-3 text-right">Avg Daily</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(summary as any[]).length === 0 ? (
+                      <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No employee data found</td></tr>
+                    ) : (summary as any[]).map((s: any) => (
+                      <tr key={s.employee.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-3 font-mono text-xs">{s.employee.employeeId || '—'}</td>
+                        <td className="p-3 font-medium">{s.employee.firstName} {s.employee.lastName}</td>
+                        <td className="p-3">{s.employee.department || '—'}</td>
+                        <td className="p-3">{s.employee.designation || '—'}</td>
+                        <td className="p-3 text-right font-bold">{s.totalHours}h</td>
+                        <td className="p-3 text-right text-muted-foreground">{s.avgHours}h/day</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { MapPin, Key, Shield } from 'lucide-react';
+import { useGetGeofenceSettings, updateGeofenceSettings, updateAdminPassword } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+
+export default function SettingsTab() {
+  const { data: geofence, loading, refetch } = useGetGeofenceSettings();
+  const [geoForm, setGeoForm] = useState({ latitude: '', longitude: '', radiusMeters: '' });
+  const [pwForm, setPwForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [savingGeo, setSavingGeo] = useState(false);
+  const [savingPw, setSavingPw] = useState(false);
+
+  useEffect(() => {
+    if (geofence) {
+      setGeoForm({
+        latitude: String(geofence.latitude),
+        longitude: String(geofence.longitude),
+        radiusMeters: String(geofence.radiusMeters),
+      });
+    }
+  }, [geofence]);
+
+  const handleGeoSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingGeo(true);
+    try {
+      await updateGeofenceSettings({
+        latitude: parseFloat(geoForm.latitude),
+        longitude: parseFloat(geoForm.longitude),
+        radiusMeters: parseFloat(geoForm.radiusMeters),
+      });
+      toast.success('Geofence settings updated');
+      refetch();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to update geofence settings');
+    } finally {
+      setSavingGeo(false);
+    }
+  };
+
+  const handlePwSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    if (pwForm.newPassword.length < 4) {
+      toast.error('Password must be at least 4 characters');
+      return;
+    }
+    setSavingPw(true);
+    try {
+      await updateAdminPassword({ newPassword: pwForm.newPassword });
+      toast.success('Admin password updated');
+      setPwForm({ newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to update password');
+    } finally {
+      setSavingPw(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-primary flex items-center gap-2">
+        <Shield size={24} /> System Settings
+      </h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Geofencing */}
+        <Card>
+          <CardHeader className="bg-muted/30 border-b">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin size={18} className="text-primary" /> Geofence Configuration
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5">
+            <form onSubmit={handleGeoSave} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Latitude</Label>
+                  <Input
+                    placeholder="-1.286389"
+                    value={geoForm.latitude}
+                    onChange={e => setGeoForm({ ...geoForm, latitude: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Longitude</Label>
+                  <Input
+                    placeholder="36.817223"
+                    value={geoForm.longitude}
+                    onChange={e => setGeoForm({ ...geoForm, longitude: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Allowed Radius (Meters)</Label>
+                <Input
+                  type="number"
+                  min="50"
+                  max="5000"
+                  placeholder="500"
+                  value={geoForm.radiusMeters}
+                  onChange={e => setGeoForm({ ...geoForm, radiusMeters: e.target.value })}
+                  required
+                />
+              </div>
+              {geofence && (
+                <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                  Current: {geofence.latitude}, {geofence.longitude} · Radius: {geofence.radiusMeters}m
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={savingGeo || loading}>
+                {savingGeo ? 'Saving...' : 'Update Geofence'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Admin Password */}
+        <Card>
+          <CardHeader className="bg-muted/30 border-b">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Key size={18} className="text-primary" /> Admin Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5">
+            <form onSubmit={handlePwSave} className="space-y-4">
+              <div className="space-y-2">
+                <Label>New Password</Label>
+                <Input
+                  type="password"
+                  placeholder="Enter new admin password"
+                  value={pwForm.newPassword}
+                  onChange={e => setPwForm({ ...pwForm, newPassword: e.target.value })}
+                  required
+                  minLength={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Confirm Password</Label>
+                <Input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={pwForm.confirmPassword}
+                  onChange={e => setPwForm({ ...pwForm, confirmPassword: e.target.value })}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" variant="secondary" disabled={savingPw}>
+                {savingPw ? 'Updating...' : 'Update Password'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CheckCircle2, XCircle, Calendar, MapPin, Inbox } from 'lucide-react';
+import {
+  useGetPendingLeaveRequests, useGetPendingOutDutyRequests,
+  approveLeaveRequest, rejectLeaveRequest,
+  approveOutDutyRequest, rejectOutDutyRequest,
+} from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+
+interface Props {
+  isAdmin: boolean;
+}
+
+export default function TaskBoxTab({ isAdmin }: Props) {
+  const { data: leaveReqs = [], refetch: refetchLeave, mutate: mutateLeave } = useGetPendingLeaveRequests();
+  const { data: outdutyReqs = [], refetch: refetchOutduty, mutate: mutateOutduty } = useGetPendingOutDutyRequests();
+
+  const handleApproveLeave = async (id: number) => {
+    mutateLeave((prev: any) => (prev || []).filter((r: any) => r.id !== id));
+    try {
+      await approveLeaveRequest({ requestId: id });
+      toast.success('Leave request approved');
+    } catch (err) {
+      captureError(err as Error);
+      refetchLeave();
+      toast.error('Failed to approve request');
+    }
+  };
+
+  const handleRejectLeave = async (id: number) => {
+    mutateLeave((prev: any) => (prev || []).filter((r: any) => r.id !== id));
+    try {
+      await rejectLeaveRequest({ requestId: id });
+      toast.success('Leave request rejected');
+    } catch (err) {
+      captureError(err as Error);
+      refetchLeave();
+      toast.error('Failed to reject request');
+    }
+  };
+
+  const handleApproveOutduty = async (id: number) => {
+    mutateOutduty((prev: any) => (prev || []).filter((r: any) => r.id !== id));
+    try {
+      await approveOutDutyRequest({ requestId: id });
+      toast.success('Out-duty request approved');
+    } catch (err) {
+      captureError(err as Error);
+      refetchOutduty();
+      toast.error('Failed to approve request');
+    }
+  };
+
+  const handleRejectOutduty = async (id: number) => {
+    mutateOutduty((prev: any) => (prev || []).filter((r: any) => r.id !== id));
+    try {
+      await rejectOutDutyRequest({ requestId: id });
+      toast.success('Out-duty request rejected');
+    } catch (err) {
+      captureError(err as Error);
+      refetchOutduty();
+      toast.error('Failed to reject request');
+    }
+  };
+
+  const totalPending = leaveReqs.length + outdutyReqs.length;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <h2 className="text-2xl font-bold text-primary">Task Box</h2>
+        {totalPending > 0 && (
+          <Badge className="bg-destructive text-destructive-foreground">{totalPending} pending</Badge>
+        )}
+      </div>
+
+      {totalPending === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="flex flex-col items-center gap-3 text-muted-foreground">
+            <Inbox size={48} className="opacity-40" />
+            <p className="text-lg font-medium">All clear!</p>
+            <p className="text-sm">No pending approval requests.</p>
+          </div>
+        </Card>
+      ) : (
+        <Tabs defaultValue="leave">
+          <TabsList>
+            <TabsTrigger value="leave" className="flex items-center gap-2">
+              <Calendar size={14} /> Leave Requests
+              {leaveReqs.length > 0 && <Badge variant="secondary" className="ml-1">{leaveReqs.length}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="outduty" className="flex items-center gap-2">
+              <MapPin size={14} /> Out Duty Requests
+              {outdutyReqs.length > 0 && <Badge variant="secondary" className="ml-1">{outdutyReqs.length}</Badge>}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="leave" className="space-y-3 mt-4">
+            {leaveReqs.length === 0 ? (
+              <Card className="p-8 text-center text-muted-foreground">No pending leave requests</Card>
+            ) : leaveReqs.map((req: any) => (
+              <Card key={req.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold">
+                        {req.employee?.firstName} {req.employee?.lastName}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {req.leaveTypeName} · {req.startDate} → {req.endDate}
+                      </div>
+                      {req.reason && <div className="text-xs text-muted-foreground mt-1 italic">"{req.reason}"</div>}
+                      {req.status === 'manager_approved' && (
+                        <Badge variant="outline" className="text-xs mt-1 text-blue-600 border-blue-300">Manager approved — awaiting admin</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="text-green-600 border-green-200 hover:bg-green-50 cursor-pointer"
+                        onClick={() => handleApproveLeave(req.id)}
+                        title="Approve"
+                      >
+                        <CheckCircle2 size={18} />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="text-destructive border-red-200 hover:bg-red-50 cursor-pointer"
+                        onClick={() => handleRejectLeave(req.id)}
+                        title="Reject"
+                      >
+                        <XCircle size={18} />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
+
+          <TabsContent value="outduty" className="space-y-3 mt-4">
+            {outdutyReqs.length === 0 ? (
+              <Card className="p-8 text-center text-muted-foreground">No pending out-duty requests</Card>
+            ) : outdutyReqs.map((req: any) => (
+              <Card key={req.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold">
+                        {req.employee?.firstName} {req.employee?.lastName}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {req.startDate} → {req.endDate}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 italic">"{req.purpose}"</div>
+                      {req.status === 'manager_approved' && (
+                        <Badge variant="outline" className="text-xs mt-1 text-blue-600 border-blue-300">Manager approved — awaiting admin</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="text-green-600 border-green-200 hover:bg-green-50 cursor-pointer"
+                        onClick={() => handleApproveOutduty(req.id)}
+                        title="Approve"
+                      >
+                        <CheckCircle2 size={18} />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="text-destructive border-red-200 hover:bg-red-50 cursor-pointer"
+                        onClick={() => handleRejectOutduty(req.id)}
+                        title="Reject"
+                      >
+                        <XCircle size={18} />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { ShieldCheck } from 'lucide-react';
+import { verifyAdminPassword } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export default function AdminPasswordDialog({ open, onClose, onSuccess }: Props) {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const result = await verifyAdminPassword({ password });
+      if (result.valid) {
+        toast.success('Admin access granted!');
+        setPassword('');
+        onSuccess();
+      } else {
+        toast.error('Incorrect admin password');
+      }
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to verify password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck size={20} className="text-primary" /> Admin Access
+          </DialogTitle>
+          <DialogDescription>Enter the admin authorization password to unlock admin features.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Admin Password</Label>
+            <Input
+              type="password"
+              placeholder="Enter admin password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" type="button" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={loading}>
+              {loading ? 'Verifying...' : 'Unlock'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+import React, { useState } from 'react';
+import {
+  Home, Calendar, FileText, User, Files, Inbox, Settings, BarChart3,
+  LogOut, Menu, Briefcase, X, ShieldCheck,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { redirectToLogout } from '@aha-app/builder-core';
+import HomeTab from '@/components/tabs/HomeTab';
+import LogsTab from '@/components/tabs/LogsTab';
+import LeaveTab from '@/components/tabs/LeaveTab';
+import OutDutyTab from '@/components/tabs/OutDutyTab';
+import BioTab from '@/components/tabs/BioTab';
+import DocumentsTab from '@/components/tabs/DocumentsTab';
+import TaskBoxTab from '@/components/tabs/TaskBoxTab';
+import ReportsTab from '@/components/tabs/ReportsTab';
+import SettingsTab from '@/components/tabs/SettingsTab';
+import AdminPasswordDialog from '@/components/AdminPasswordDialog';
+import { cn } from '@/lib/utils';
+
+interface Props {
+  user: any;
+}
+
+const navItems = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'logs', label: 'Logs', icon: Calendar },
+  { id: 'leave', label: 'Leave', icon: FileText },
+  { id: 'outduty', label: 'Out Duty', icon: Briefcase },
+  { id: 'bio', label: 'Bio', icon: User },
+  { id: 'docs', label: 'Documents', icon: Files },
+  { id: 'tasks', label: 'Task Box', icon: Inbox },
+];
+
+const adminNavItems = [
+  { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'settings', label: 'Settings', icon: Settings },
+];
+
+export default function AppShell({ user }: Props) {
+  const [activeTab, setActiveTab] = useState('home');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showAdminDialog, setShowAdminDialog] = useState(false);
+  const [currentUser, setCurrentUser] = useState(user);
+
+  const allItems = [...navItems, ...(currentUser.isAdmin ? adminNavItems : [])];
+  const activeItem = allItems.find(n => n.id === activeTab);
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'home': return <HomeTab />;
+      case 'logs': return <LogsTab />;
+      case 'leave': return <LeaveTab />;
+      case 'outduty': return <OutDutyTab />;
+      case 'bio': return <BioTab user={currentUser} onUpdate={setCurrentUser} />;
+      case 'docs': return <DocumentsTab />;
+      case 'tasks': return <TaskBoxTab isAdmin={currentUser.isAdmin} />;
+      case 'reports': return <ReportsTab />;
+      case 'settings': return <SettingsTab />;
+      default: return <HomeTab />;
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* Sidebar */}
+      <aside className={cn(
+        'bg-sidebar border-r border-sidebar-border flex flex-col transition-all duration-300 shrink-0',
+        sidebarOpen ? 'w-64' : 'w-16'
+      )}>
+        <div className="h-16 flex items-center gap-3 px-4 bg-primary shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+            <Briefcase className="text-white" size={18} />
+          </div>
+          {sidebarOpen && <span className="font-bold text-white whitespace-nowrap text-sm">Hospital Staff Hub</span>}
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={cn(
+                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer text-sm',
+                activeTab === item.id
+                  ? 'bg-primary text-primary-foreground font-semibold'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
+              )}
+            >
+              <item.icon size={18} className="shrink-0" />
+              {sidebarOpen && <span>{item.label}</span>}
+            </button>
+          ))}
+
+          {currentUser.isAdmin && (
+            <>
+              <div className="pt-3 pb-1">
+                {sidebarOpen
+                  ? <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Admin</p>
+                  : <hr className="border-sidebar-border" />
+                }
+              </div>
+              {adminNavItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer text-sm',
+                    activeTab === item.id
+                      ? 'bg-primary text-primary-foreground font-semibold'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                  )}
+                >
+                  <item.icon size={18} className="shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
+                </button>
+              ))}
+            </>
+          )}
+        </nav>
+
+        <div className="p-3 border-t border-sidebar-border space-y-1">
+          {!currentUser.isAdmin && (
+            <button
+              onClick={() => setShowAdminDialog(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors cursor-pointer text-sm"
+            >
+              <ShieldCheck size={18} className="shrink-0" />
+              {sidebarOpen && <span>Admin Access</span>}
+            </button>
+          )}
+          <button
+            onClick={() => redirectToLogout()}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-destructive hover:bg-red-50 transition-colors cursor-pointer text-sm"
+          >
+            <LogOut size={18} className="shrink-0" />
+            {sidebarOpen && <span>Sign Out</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="h-16 bg-primary flex items-center justify-between px-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/10"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <Menu size={20} />
+            </Button>
+            <h2 className="text-white font-semibold">{activeItem?.label || 'Home'}</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            {currentUser.isAdmin && (
+              <span className="hidden sm:inline-flex items-center gap-1 text-xs bg-white/20 text-white px-2 py-1 rounded-full">
+                <ShieldCheck size={12} /> Admin
+              </span>
+            )}
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-semibold text-white leading-tight">
+                {currentUser.firstName} {currentUser.lastName}
+              </p>
+              <p className="text-xs text-white/70">{currentUser.designation || currentUser.department}</p>
+            </div>
+            <div className="w-9 h-9 rounded-full bg-white/20 border-2 border-white/30 flex items-center justify-center text-white font-bold text-sm">
+              {currentUser.firstName?.[0] || currentUser.email[0].toUpperCase()}
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-6xl mx-auto">
+            {renderContent()}
+          </div>
+        </div>
+      </main>
+
+      <AdminPasswordDialog
+        open={showAdminDialog}
+        onClose={() => setShowAdminDialog(false)}
+        onSuccess={() => {
+          setCurrentUser((u: any) => ({ ...u, isAdmin: true }));
+          setShowAdminDialog(false);
+          setActiveTab('reports');
+        }}
+      />
+    </div>
+  );
+}
+import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { completeProfile } from '@/server';
+import { toast } from 'sonner';
+import { captureError } from '@aha-app/builder-core';
+import { Briefcase, User } from 'lucide-react';
+
+const DEPARTMENTS = [
+  'Nursing', 'OPD', 'Laboratory', 'Pharmacy', 'Radiology',
+  'Surgery', 'ICU', 'Administration', 'Finance', 'HR', 'Maintenance',
+];
+
+interface Props {
+  onComplete: () => void;
+}
+
+export default function ProfileSetup({ onComplete }: Props) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    phone: '', gender: '', dob: '',
+    department: '', designation: '', employeeType: 'Permanent',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.phone || !form.gender || !form.dob || !form.department || !form.designation) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setSaving(true);
+    try {
+      await completeProfile(form);
+      toast.success('Profile setup complete! Welcome to Hospital Staff Hub.');
+      onComplete();
+    } catch (err) {
+      captureError(err as Error);
+      toast.error('Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary mb-4">
+            <Briefcase className="text-primary-foreground" size={32} />
+          </div>
+          <h1 className="text-3xl font-bold text-primary">Hospital Staff Hub</h1>
+          <p className="text-muted-foreground mt-2">Welcome! Let's complete your employee profile.</p>
+        </div>
+
+        <Card className="border-t-4 border-t-primary">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><User size={20} /> Employee Profile Setup</CardTitle>
+            <CardDescription>This information will be used for attendance and HR records.</CardDescription>
+          </CardHeader>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Phone Number</Label>
+                  <Input placeholder="+254 700 000 000" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date of Birth</Label>
+                  <Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} required />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Gender</Label>
+                <Select value={form.gender} onValueChange={v => setForm({ ...form, gender: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={form.department} onValueChange={v => setForm({ ...form, department: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Designation / Job Title</Label>
+                <Input placeholder="e.g. Senior Nurse" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Employee Type</Label>
+                <Select value={form.employeeType} onValueChange={v => setForm({ ...form, employeeType: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Permanent">Permanent</SelectItem>
+                    <SelectItem value="Locum">Locum</SelectItem>
+                    <SelectItem value="Expat">Expat</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" className="w-full" disabled={saving}>
+                {saving ? 'Saving...' : 'Complete Setup'}
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    </div>
+  );
+}
+import { server, db, getCurrentUser, captureError } from '@aha-app/builder-core';
+import { attendanceRecordsTable, usersTable } from '@/db/schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
+const _SHEET_URL = process.env.GOOGLE_SHEET_URL;
+async function _postToSheet(payload: Record<string, any>): Promise<any> {
+  if (!_SHEET_URL) throw new Error('GOOGLE_SHEET_URL is not configured');
+  const res = await fetch(_SHEET_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow' });
+  if (!res.ok) throw new Error(`Sheet API error: ${res.status}`);
+  return res.json();
+}
+async function sheetClockIn(params: { id: string; name: string; designation: string; department: string; date: string; time: string; location: string; }) {
+  return _postToSheet({ action: 'clockIn', ...params });
+}
+async function sheetClockOut(params: { id: string; date: string; clockOut: string; locationOut: string; }) {
+  return _postToSheet({ action: 'clockOut', ...params });
+}
+
+server.data('clockIn', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const timeStr = now.toTimeString().substring(0, 5);
+
+  const [existing] = await db
+    .select()
+    .from(attendanceRecordsTable)
+    .where(and(eq(attendanceRecordsTable.userId, user.id), eq(attendanceRecordsTable.date, today)));
+
+  if (existing?.clockIn) throw new Error('Already clocked in today');
+
+  let record;
+  if (existing) {
+    const [updated] = await db
+      .update(attendanceRecordsTable)
+      .set({ clockIn: timeStr, status: 'present', updatedAt: new Date() })
+      .where(eq(attendanceRecordsTable.id, existing.id))
+      .returning();
+    record = updated;
+  } else {
+    const [created] = await db
+      .insert(attendanceRecordsTable)
+      .values({ userId: user.id, date: today, clockIn: timeStr, status: 'present' })
+      .returning();
+    record = created;
+  }
+
+  // Sync to Google Sheet (non-blocking)
+  try {
+    const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    await sheetClockIn({
+      id: profile.employeeId || String(user.id),
+      name: `${profile.firstName || ''} ${profile.lastName || ''}`.trim(),
+      designation: profile.designation || '',
+      department: profile.department || '',
+      date: today,
+      time: timeStr,
+      location: 'Within Geofence',
+    });
+  } catch (err) {
+    captureError(err as Error);
+  }
+
+  return record;
+});
+
+server.data('clockOut', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const timeStr = now.toTimeString().substring(0, 5);
+
+  const [existing] = await db
+    .select()
+    .from(attendanceRecordsTable)
+    .where(and(eq(attendanceRecordsTable.userId, user.id), eq(attendanceRecordsTable.date, today)));
+
+  if (!existing?.clockIn) throw new Error('Not clocked in today');
+  if (existing.clockOut) throw new Error('Already clocked out today');
+
+  const [inH, inM] = existing.clockIn.split(':').map(Number);
+  const [outH, outM] = timeStr.split(':').map(Number);
+  const totalHours = parseFloat(((outH * 60 + outM - (inH * 60 + inM)) / 60).toFixed(2));
+
+  const [updated] = await db
+    .update(attendanceRecordsTable)
+    .set({ clockOut: timeStr, totalHours, updatedAt: new Date() })
+    .where(eq(attendanceRecordsTable.id, existing.id))
+    .returning();
+
+  // Sync to Google Sheet (non-blocking)
+  try {
+    const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    await sheetClockOut({
+      id: profile.employeeId || String(user.id),
+      date: today,
+      clockOut: timeStr,
+      locationOut: 'Within Geofence',
+    });
+  } catch (err) {
+    captureError(err as Error);
+  }
+
+  return updated;
+});
+
+server.data('getMyAttendance', async ({ year, month }: { year: number; month: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+  return db
+    .select()
+    .from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, user.id),
+      gte(attendanceRecordsTable.date, startDate),
+      lte(attendanceRecordsTable.date, endDate),
+    ))
+    .orderBy(attendanceRecordsTable.date);
+});
+
+server.data('getTodayAttendance', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const today = new Date().toISOString().split('T')[0];
+  const [record] = await db
+    .select()
+    .from(attendanceRecordsTable)
+    .where(and(eq(attendanceRecordsTable.userId, user.id), eq(attendanceRecordsTable.date, today)));
+  return record || null;
+});
+
+server.data('getAdminAttendanceSummary', async ({ year, month }: { year: number; month: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+  const employees = await db.select().from(usersTable).where(eq(usersTable.isProfileComplete, true));
+  const records = await db
+    .select()
+    .from(attendanceRecordsTable)
+    .where(and(gte(attendanceRecordsTable.date, startDate), lte(attendanceRecordsTable.date, endDate)));
+
+  return employees.map(emp => {
+    const empRecords = records.filter(r => r.userId === emp.id);
+    const present = empRecords.filter(r => r.status === 'present').length;
+    const absent = empRecords.filter(r => r.status === 'absent').length;
+    const leave = empRecords.filter(r => r.status === 'on-leave').length;
+    const outduty = empRecords.filter(r => r.status === 'out-duty').length;
+    const totalHours = empRecords.reduce((sum, r) => sum + (r.totalHours || 0), 0);
+    const workDays = empRecords.filter(r => r.totalHours && r.totalHours > 0).length;
+    return {
+      employee: emp,
+      present, absent, leave, outduty,
+      totalHours: parseFloat(totalHours.toFixed(2)),
+      avgHours: workDays > 0 ? parseFloat((totalHours / workDays).toFixed(2)) : 0,
+    };
+  });
+});
+import { server, db, getCurrentUser, FileBlob, uploadFile } from '@aha-app/builder-core';
+import { employeeDocumentsTable } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
+
+server.data('getMyDocuments', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const docs = await db.select().from(employeeDocumentsTable).where(eq(employeeDocumentsTable.userId, user.id));
+
+  return Promise.all(
+    docs.map(async (doc) => {
+      const blob = FileBlob.loadFileBlob(doc.fileBlobId);
+      const url = await blob.url();
+      return { ...doc, url };
+    })
+  );
+});
+
+server.data('uploadDocument', async (docType: string, file: File) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const blob = await (file as any).saveAsFileBlob();
+
+  // Replace if exists
+  const [existing] = await db
+    .select()
+    .from(employeeDocumentsTable)
+    .where(and(eq(employeeDocumentsTable.userId, user.id), eq(employeeDocumentsTable.docType, docType)));
+
+  if (existing) {
+    // Delete old blob
+    try {
+      const oldBlob = FileBlob.loadFileBlob(existing.fileBlobId);
+      await oldBlob.delete();
+    } catch (e) { /* ignore */ }
+
+    const [updated] = await db
+      .update(employeeDocumentsTable)
+      .set({ fileName: (file as any).name, fileBlobId: blob.id, uploadedAt: new Date() })
+      .where(eq(employeeDocumentsTable.id, existing.id))
+      .returning();
+    const url = await blob.url();
+    return { ...updated, url };
+  }
+
+  const [doc] = await db
+    .insert(employeeDocumentsTable)
+    .values({ userId: user.id, docType, fileName: (file as any).name, fileBlobId: blob.id })
+    .returning();
+  const url = await blob.url();
+  return { ...doc, url };
+});
+
+server.data('deleteDocument', async ({ docId }: { docId: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [doc] = await db
+    .select()
+    .from(employeeDocumentsTable)
+    .where(and(eq(employeeDocumentsTable.id, docId), eq(employeeDocumentsTable.userId, user.id)));
+
+  if (!doc) throw new Error('Document not found');
+  try {
+    const blob = FileBlob.loadFileBlob(doc.fileBlobId);
+    await blob.delete();
+  } catch (e) { /* ignore */ }
+
+  await db.delete(employeeDocumentsTable).where(eq(employeeDocumentsTable.id, docId));
+  return { success: true };
+});
+
+server.data('getDocumentUrl', async ({ docId }: { docId: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [doc] = await db
+    .select()
+    .from(employeeDocumentsTable)
+    .where(and(eq(employeeDocumentsTable.id, docId), eq(employeeDocumentsTable.userId, user.id)));
+
+  if (!doc) throw new Error('Document not found');
+  const blob = FileBlob.loadFileBlob(doc.fileBlobId);
+  return { url: await blob.url() };
+});
+/**
+ * Google Sheet API helper — server-side only
+ * Calls the deployed Google Apps Script web app.
+ */
+
+const SHEET_URL = process.env.GOOGLE_SHEET_URL as string;
+
+async function postToSheet(payload: Record<string, any>): Promise<any> {
+  if (!SHEET_URL) throw new Error('GOOGLE_SHEET_URL environment variable is not configured');
+  const res = await fetch(SHEET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    redirect: 'follow',
+  });
+  if (!res.ok) throw new Error(`Sheet API error: ${res.status}`);
+  return res.json();
+}
+
+async function getFromSheet(): Promise<any> {
+  if (!SHEET_URL) throw new Error('GOOGLE_SHEET_URL environment variable is not configured');
+  const res = await fetch(SHEET_URL, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`Sheet API error: ${res.status}`);
+  return res.json();
+}
+
+/** Fetch all staff from the Staff sheet */
+export async function fetchAllStaff(): Promise<any[]> {
+  const result = await getFromSheet();
+  return result.success ? result.data : [];
+}
+
+/** Find one employee by email from the Staff sheet */
+export async function findStaffByEmail(email: string): Promise<any | null> {
+  const all = await fetchAllStaff();
+  return all.find((s: any) => String(s.email).toLowerCase() === email.toLowerCase()) || null;
+}
+
+/** Clock in — writes a row to the Attendance sheet */
+export async function sheetClockIn(params: {
+  id: string; name: string; designation: string;
+  department: string; date: string; time: string; location: string;
+}) {
+  return postToSheet({ action: 'clockIn', ...params });
+}
+
+/** Clock out — updates the Attendance row */
+export async function sheetClockOut(params: {
+  id: string; date: string; clockOut: string; locationOut: string;
+}) {
+  return postToSheet({ action: 'clockOut', ...params });
+}
+
+/** Submit a leave request to the LeaveRequests sheet */
+export async function sheetAddLeaveRequest(params: {
+  staffId: string; name: string; leaveType: string;
+  manager_email: string; fromDate: string; toDate: string;
+}) {
+  return postToSheet({ action: 'addLeaveRequest', ...params });
+}
+
+/** Submit an out-duty request to the OutDutyRequests sheet */
+export async function sheetAddOutDutyRequest(params: {
+  staffId: string; name: string; fromDate: string;
+  toDate: string; daysApplied: number; reason: string; manager_email: string;
+}) {
+  return postToSheet({ action: 'addOutDutyRequest', ...params });
+}
+
+/** Get geofence settings from the Settings sheet */
+export async function sheetGetSettings() {
+  return postToSheet({ action: 'getSettings' });
+}
+
+/** Save geofence settings to the Settings sheet */
+export async function sheetSaveSettings(params: {
+  latitude: number; longitude: number; radius: number;
+}) {
+  return postToSheet({ action: 'saveSettings', ...params });
+}
+import { server, db, getCurrentUser, captureError } from '@aha-app/builder-core';
+import {
+  leaveTypesTable,
+  leaveBalancesTable,
+  leaveRequestsTable,
+  usersTable,
+  attendanceRecordsTable,
+} from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+const _SHEET_URL = process.env.GOOGLE_SHEET_URL;
+async function sheetAddLeaveRequest(params: { staffId: string; name: string; leaveType: string; manager_email: string; fromDate: string; toDate: string; }) {
+  if (!_SHEET_URL) return;
+  await fetch(_SHEET_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addLeaveRequest', ...params }), redirect: 'follow' });
+}
+
+server.data('getLeaveBalances', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const year = new Date().getFullYear();
+
+  // Ensure balances exist
+  const types = await db.select().from(leaveTypesTable);
+  for (const lt of types) {
+    await db
+      .insert(leaveBalancesTable)
+      .values({ userId: user.id, leaveTypeId: lt.id, accrued: lt.defaultAccruedDays, utilized: 0, year })
+      .onConflictDoNothing();
+  }
+
+  const balances = await db
+    .select()
+    .from(leaveBalancesTable)
+    .where(and(eq(leaveBalancesTable.userId, user.id), eq(leaveBalancesTable.year, year)));
+
+  return balances.map(b => {
+    const lt = types.find(t => t.id === b.leaveTypeId)!;
+    return { ...b, leaveTypeName: lt?.name, balance: b.accrued - b.utilized };
+  });
+});
+
+server.data('applyLeave', async ({
+  leaveTypeId, startDate, endDate, reason,
+}: {
+  leaveTypeId: number; startDate: string; endDate: string; reason?: string;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const [lt] = await db.select().from(leaveTypesTable).where(eq(leaveTypesTable.id, leaveTypeId));
+  if (!lt) throw new Error('Invalid leave type');
+
+  const [req] = await db
+    .insert(leaveRequestsTable)
+    .values({
+      userId: user.id,
+      leaveTypeId,
+      leaveTypeName: lt.name,
+      startDate,
+      endDate,
+      reason,
+      status: 'pending',
+    })
+    .returning();
+
+  // Sync to Google Sheet (non-blocking)
+  try {
+    const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    await sheetAddLeaveRequest({
+      staffId: profile.employeeId || String(user.id),
+      name: `${profile.firstName || ''} ${profile.lastName || ''}`.trim(),
+      leaveType: lt.name,
+      manager_email: '', // will be filled from sheet manager mapping
+      fromDate: startDate,
+      toDate: endDate,
+    });
+  } catch (err) {
+    captureError(err as Error);
+  }
+
+  return req;
+});
+
+server.data('getMyLeaveRequests', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  return db
+    .select()
+    .from(leaveRequestsTable)
+    .where(eq(leaveRequestsTable.userId, user.id))
+    .orderBy(leaveRequestsTable.createdAt);
+});
+
+// Get pending leave requests for employees under this manager (or all for admin)
+server.data('getPendingLeaveRequests', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+
+  let requests;
+  if (me.isAdmin) {
+    requests = await db.select().from(leaveRequestsTable)
+      .where(sql`status IN ('pending', 'manager_approved')`);
+  } else {
+    // Get subordinates
+    const subordinates = await db.select().from(usersTable).where(eq(usersTable.managerId, user.id));
+    const subIds = subordinates.map(s => s.id);
+    if (!subIds.length) return [];
+    requests = await db.select().from(leaveRequestsTable)
+      .where(and(
+        sql`user_id = ANY(${subIds})`,
+        sql`status = 'pending'`,
+      ));
+  }
+
+  // Enrich with employee info
+  const employees = await db.select().from(usersTable);
+  return requests.map(r => ({
+    ...r,
+    employee: employees.find(e => e.id === r.userId),
+  }));
+});
+
+server.data('approveLeaveRequest', async ({ requestId }: { requestId: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+
+  const [req] = await db.select().from(leaveRequestsTable).where(eq(leaveRequestsTable.id, requestId));
+  if (!req) throw new Error('Request not found');
+
+  let newStatus: 'manager_approved' | 'approved' = 'manager_approved';
+  if (me.isAdmin) {
+    newStatus = 'approved';
+    // Update leave balance
+    const year = new Date(req.startDate).getFullYear();
+    const start = new Date(req.startDate);
+    const end = new Date(req.endDate);
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    await db.update(leaveBalancesTable)
+      .set({ utilized: sql`utilized + ${days}` })
+      .where(and(
+        eq(leaveBalancesTable.userId, req.userId),
+        eq(leaveBalancesTable.leaveTypeId, req.leaveTypeId),
+        eq(leaveBalancesTable.year, year),
+      ));
+
+    // Mark attendance days as on-leave
+    const dateList: string[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dateList.push(d.toISOString().split('T')[0]);
+    }
+    for (const dateStr of dateList) {
+      await db.insert(attendanceRecordsTable)
+        .values({ userId: req.userId, date: dateStr, status: 'on-leave' })
+        .onConflictDoNothing();
+      await db.update(attendanceRecordsTable)
+        .set({ status: 'on-leave' })
+        .where(and(
+          eq(attendanceRecordsTable.userId, req.userId),
+          eq(attendanceRecordsTable.date, dateStr),
+        ));
+    }
+  }
+
+  await db.update(leaveRequestsTable)
+    .set({
+      status: newStatus,
+      managerApprovedAt: !me.isAdmin ? new Date() : undefined,
+      adminApprovedAt: me.isAdmin ? new Date() : undefined,
+    })
+    .where(eq(leaveRequestsTable.id, requestId));
+
+  return { success: true };
+});
+
+server.data('rejectLeaveRequest', async ({ requestId, reason }: { requestId: number; reason?: string }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  await db.update(leaveRequestsTable)
+    .set({ status: 'rejected', rejectedAt: new Date(), rejectedReason: reason })
+    .where(eq(leaveRequestsTable.id, requestId));
+  return { success: true };
+});
+
+// Admin: adjust leave balance
+server.data('adminAdjustLeaveBalance', async ({
+  userId, leaveTypeId, accrued, utilized, year,
+}: {
+  userId: number; leaveTypeId: number; accrued: number; utilized: number; year: number;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!me.isAdmin) throw new Error('Admin access required');
+
+  await db.update(leaveBalancesTable)
+    .set({ accrued, utilized })
+    .where(and(
+      eq(leaveBalancesTable.userId, userId),
+      eq(leaveBalancesTable.leaveTypeId, leaveTypeId),
+      eq(leaveBalancesTable.year, year),
+    ));
+  return { success: true };
+});
+import { server, db, getCurrentUser, captureError } from '@aha-app/builder-core';
+import { outDutyRequestsTable, usersTable, attendanceRecordsTable } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+const _SHEET_URL = process.env.GOOGLE_SHEET_URL;
+async function sheetAddOutDutyRequest(params: { staffId: string; name: string; fromDate: string; toDate: string; daysApplied: number; reason: string; manager_email: string; }) {
+  if (!_SHEET_URL) return;
+  await fetch(_SHEET_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'addOutDutyRequest', ...params }), redirect: 'follow' });
+}
+
+server.data('applyOutDuty', async ({
+  startDate, endDate, purpose,
+}: {
+  startDate: string; endDate: string; purpose: string;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const [req] = await db
+    .insert(outDutyRequestsTable)
+    .values({ userId: user.id, startDate, endDate, purpose, status: 'pending' })
+    .returning();
+
+  // Sync to Google Sheet (non-blocking)
+  try {
+    const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    await sheetAddOutDutyRequest({
+      staffId: profile.employeeId || String(user.id),
+      name: `${profile.firstName || ''} ${profile.lastName || ''}`.trim(),
+      fromDate: startDate,
+      toDate: endDate,
+      daysApplied: days,
+      reason: purpose,
+      manager_email: '',
+    });
+  } catch (err) {
+    captureError(err as Error);
+  }
+
+  return req;
+});
+
+server.data('getMyOutDutyRequests', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  return db.select().from(outDutyRequestsTable).where(eq(outDutyRequestsTable.userId, user.id))
+    .orderBy(outDutyRequestsTable.createdAt);
+});
+
+server.data('getPendingOutDutyRequests', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+
+  let requests;
+  if (me.isAdmin) {
+    requests = await db.select().from(outDutyRequestsTable)
+      .where(sql`status IN ('pending', 'manager_approved')`);
+  } else {
+    const subordinates = await db.select().from(usersTable).where(eq(usersTable.managerId, user.id));
+    const subIds = subordinates.map(s => s.id);
+    if (!subIds.length) return [];
+    requests = await db.select().from(outDutyRequestsTable)
+      .where(and(sql`user_id = ANY(${subIds})`, sql`status = 'pending'`));
+  }
+
+  const employees = await db.select().from(usersTable);
+  return requests.map(r => ({
+    ...r,
+    employee: employees.find(e => e.id === r.userId),
+  }));
+});
+
+server.data('approveOutDutyRequest', async ({ requestId }: { requestId: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  const [req] = await db.select().from(outDutyRequestsTable).where(eq(outDutyRequestsTable.id, requestId));
+  if (!req) throw new Error('Request not found');
+
+  let newStatus: 'manager_approved' | 'approved' = 'manager_approved';
+  if (me.isAdmin) {
+    newStatus = 'approved';
+    // Mark attendance as out-duty
+    const start = new Date(req.startDate);
+    const end = new Date(req.endDate);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      await db.insert(attendanceRecordsTable)
+        .values({ userId: req.userId, date: dateStr, status: 'out-duty' })
+        .onConflictDoNothing();
+      await db.update(attendanceRecordsTable)
+        .set({ status: 'out-duty' })
+        .where(and(
+          eq(attendanceRecordsTable.userId, req.userId),
+          eq(attendanceRecordsTable.date, dateStr),
+        ));
+    }
+  }
+
+  await db.update(outDutyRequestsTable)
+    .set({
+      status: newStatus,
+      managerApprovedAt: !me.isAdmin ? new Date() : undefined,
+      adminApprovedAt: me.isAdmin ? new Date() : undefined,
+    })
+    .where(eq(outDutyRequestsTable.id, requestId));
+  return { success: true };
+});
+
+server.data('rejectOutDutyRequest', async ({ requestId, reason }: { requestId: number; reason?: string }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  await db.update(outDutyRequestsTable)
+    .set({ status: 'rejected', rejectedAt: new Date(), rejectedReason: reason })
+    .where(eq(outDutyRequestsTable.id, requestId));
+  return { success: true };
+});
+import { server, db, getCurrentUser } from '@aha-app/builder-core';
+import { geofenceSettingsTable, usersTable } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+
+server.data('getGeofenceSettings', async () => {
+  const [settings] = await db.select().from(geofenceSettingsTable);
+  return settings || null;
+});
+
+server.data('updateGeofenceSettings', async ({
+  latitude, longitude, radiusMeters,
+}: {
+  latitude: number; longitude: number; radiusMeters: number;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!me.isAdmin) throw new Error('Admin access required');
+
+  const [existing] = await db.select().from(geofenceSettingsTable);
+  if (existing) {
+    const [updated] = await db
+      .update(geofenceSettingsTable)
+      .set({ latitude, longitude, radiusMeters, updatedAt: new Date() })
+      .where(eq(geofenceSettingsTable.id, existing.id))
+      .returning();
+    return updated;
+  }
+  const [created] = await db
+    .insert(geofenceSettingsTable)
+    .values({ latitude, longitude, radiusMeters })
+    .returning();
+  return created;
+});
+
+server.data('updateAdminPassword', async ({ newPassword }: { newPassword: string }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!me.isAdmin) throw new Error('Admin access required');
+
+  const [existing] = await db.select().from(geofenceSettingsTable);
+  if (existing) {
+    await db.update(geofenceSettingsTable)
+      .set({ adminPassword: newPassword })
+      .where(eq(geofenceSettingsTable.id, existing.id));
+  }
+  return { success: true };
+});
+import { server, db, getCurrentUser, captureError } from '@aha-app/builder-core';
+import { usersTable, leaveTypesTable, leaveBalancesTable, geofenceSettingsTable } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+const _SHEET_URL = process.env.GOOGLE_SHEET_URL;
+async function findStaffByEmail(email: string): Promise<any | null> {
+  if (!_SHEET_URL) return null;
+  try {
+    const res = await fetch(_SHEET_URL, { redirect: 'follow' });
+    if (!res.ok) return null;
+    const result = await res.json();
+    const all: any[] = result.success ? result.data : [];
+    return all.find((s: any) => String(s.email).toLowerCase() === email.toLowerCase()) || null;
+  } catch { return null; }
+}
+
+// Auto-generate a unique employee ID
+async function generateEmployeeId(): Promise<string> {
+  const prefix = 'HSH';
+  const existing = await db
+    .select({ employeeId: usersTable.employeeId })
+    .from(usersTable)
+    .where(sql`employee_id LIKE ${prefix + '-%'}`);
+  let nextNum = 1001;
+  if (existing.length > 0) {
+    const nums = existing
+      .map(r => r.employeeId ? parseInt(r.employeeId.replace(prefix + '-', ''), 10) : 0)
+      .filter(n => !isNaN(n));
+    if (nums.length > 0) nextNum = Math.max(...nums) + 1;
+  }
+  return `${prefix}-${nextNum}`;
+}
+
+// Seed leave balances for a new user
+// If sheetData is provided, use the sheet's accrued/utilized values
+async function seedLeaveBalances(userId: number, sheetEmployee?: any) {
+  const types = await db.select().from(leaveTypesTable);
+  const year = new Date().getFullYear();
+
+  const sheetMap: Record<string, { accrued: number; utilized: number }> = {};
+  if (sheetEmployee) {
+    sheetMap['Annual Leave']       = { accrued: Number(sheetEmployee.annualTotal) || 21,  utilized: Number(sheetEmployee.annualUsed) || 0 };
+    sheetMap['Sick Leave']         = { accrued: Number(sheetEmployee.sickTotal) || 14,    utilized: Number(sheetEmployee.sickUsed) || 0 };
+    sheetMap['Maternity Leave']    = { accrued: Number(sheetEmployee.maternityTotal) || 90, utilized: Number(sheetEmployee.maternityUsed) || 0 };
+    sheetMap['Paternity Leave']    = { accrued: Number(sheetEmployee.paternityTotal) || 14, utilized: Number(sheetEmployee.paternityUsed) || 0 };
+    sheetMap['Compassionate Leave']= { accrued: Number(sheetEmployee.compassionateTotal) || 5, utilized: Number(sheetEmployee.compassionateUsed) || 0 };
+  }
+
+  for (const lt of types) {
+    const override = sheetMap[lt.name];
+    await db
+      .insert(leaveBalancesTable)
+      .values({
+        userId,
+        leaveTypeId: lt.id,
+        accrued: override?.accrued ?? lt.defaultAccruedDays,
+        utilized: override?.utilized ?? 0,
+        year,
+      })
+      .onConflictDoNothing();
+
+    // Update if already exists and we have sheet data
+    if (override) {
+      await db.update(leaveBalancesTable)
+        .set({ accrued: override.accrued, utilized: override.utilized })
+        .where(and(
+          eq(leaveBalancesTable.userId, userId),
+          eq(leaveBalancesTable.leaveTypeId, lt.id),
+          eq(leaveBalancesTable.year, year),
+        ));
+    }
+  }
+}
+
+// Try to sync a user's profile from Google Sheet by email
+async function trySyncFromSheet(userId: number, email: string): Promise<boolean> {
+  try {
+    const sheetEmp = await findStaffByEmail(email);
+    if (!sheetEmp) return false;
+
+    // Map sheet employee type to our enum
+    const empTypeMap: Record<string, string> = {
+      'permanent': 'Permanent', 'locum': 'Locum', 'expat': 'Expat',
+    };
+    const empType = empTypeMap[(sheetEmp.empType || '').toLowerCase()] || 'Permanent';
+
+    // Use sheet's employee ID if available, otherwise generate one
+    let employeeId = sheetEmp.id && String(sheetEmp.id).trim() ? String(sheetEmp.id).trim() : null;
+    if (!employeeId) employeeId = await generateEmployeeId();
+
+    // Find manager in local DB by name or email
+    let managerId: number | undefined;
+    if (sheetEmp.managerEmail) {
+      const [manager] = await db.select().from(usersTable)
+        .where(eq(usersTable.email, sheetEmp.managerEmail));
+      if (manager) managerId = manager.id;
+    }
+
+    await db.update(usersTable).set({
+      employeeId,
+      phone: sheetEmp.phone || null,
+      gender: sheetEmp.gender || null,
+      dob: sheetEmp.dob || null,
+      department: sheetEmp.department || null,
+      designation: sheetEmp.designation || null,
+      employeeType: empType as any,
+      managerId,
+      isProfileComplete: true,
+      updatedAt: new Date(),
+    }).where(eq(usersTable.id, userId));
+
+    // Sync leave balances from sheet
+    await seedLeaveBalances(userId, {
+      annualTotal: sheetEmp.annualTotal, annualUsed: sheetEmp.annualUsed,
+      sickTotal: sheetEmp.sickTotal, sickUsed: sheetEmp.sickUsed,
+      maternityTotal: sheetEmp.maternityTotal, maternityUsed: sheetEmp.maternityUsed,
+      paternityTotal: sheetEmp.paternityTotal, paternityUsed: sheetEmp.paternityUsed,
+      compassionateTotal: sheetEmp.compassionateTotal, compassionateUsed: sheetEmp.compassionateUsed,
+    });
+
+    return true;
+  } catch (err) {
+    // Sheet sync is non-blocking — log but don't fail
+    captureError(err as Error);
+    return false;
+  }
+}
+
+server.data('getMe', async () => {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!profile) return null;
+
+  // If profile not complete, try auto-sync from Google Sheet
+  if (!profile.isProfileComplete) {
+    const synced = await trySyncFromSheet(user.id, profile.email);
+    if (synced) {
+      const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+      return updated;
+    }
+  }
+
+  return profile;
+});
+
+// Manual re-sync from sheet (callable from profile page)
+server.data('syncProfileFromSheet', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [profile] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  const synced = await trySyncFromSheet(user.id, profile.email);
+  if (!synced) throw new Error('Your email was not found in the staff sheet. Please contact admin.');
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  return updated;
+});
+
+server.data('completeProfile', async ({
+  phone, gender, dob, department, designation, employeeType,
+}: {
+  phone: string; gender: string; dob: string;
+  department: string; designation: string; employeeType: string;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const employeeId = await generateEmployeeId();
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      phone, gender, dob, department, designation,
+      employeeType: employeeType as any,
+      employeeId,
+      isProfileComplete: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  await seedLeaveBalances(user.id);
+  return updated;
+});
+
+server.data('updateProfile', async ({
+  phone, gender, dob, department, designation, employeeType, managerId,
+}: {
+  phone?: string; gender?: string; dob?: string;
+  department?: string; designation?: string; employeeType?: string; managerId?: number;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      phone, gender, dob, department, designation,
+      employeeType: employeeType as any,
+      managerId,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+  return updated;
+});
+
+server.data('getAllEmployees', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  return db.select().from(usersTable).where(eq(usersTable.isProfileComplete, true));
+});
+
+server.data('getEmployeeById', async ({ id }: { id: number }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [emp] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  return emp || null;
+});
+
+// Admin: update any employee
+server.data('adminUpdateEmployee', async ({
+  targetUserId, department, designation, employeeType, managerId, isAdmin, accrued, leaveTypeId, year,
+}: {
+  targetUserId: number; department?: string; designation?: string;
+  employeeType?: string; managerId?: number; isAdmin?: boolean;
+  accrued?: number; leaveTypeId?: number; year?: number;
+}) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!me.isAdmin) throw new Error('Admin access required');
+
+  await db.update(usersTable)
+    .set({
+      department, designation, employeeType: employeeType as any,
+      managerId, isAdmin, updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, targetUserId));
+
+  if (leaveTypeId != null && accrued != null && year != null) {
+    await db.update(leaveBalancesTable)
+      .set({ accrued })
+      .where(and(
+        eq(leaveBalancesTable.userId, targetUserId),
+        eq(leaveBalancesTable.leaveTypeId, leaveTypeId),
+        eq(leaveBalancesTable.year, year),
+      ));
+  }
+
+  return { success: true };
+});
+
+server.data('verifyAdminPassword', async ({ password }: { password: string }) => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  const [settings] = await db.select().from(geofenceSettingsTable);
+  if (!settings) return { valid: false };
+  const valid = settings.adminPassword === password;
+  if (valid) {
+    await db.update(usersTable).set({ isAdmin: true }).where(eq(usersTable.id, user.id));
+  }
+  return { valid };
+});
+
+server.data('revokeAdminAccess', async () => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+  await db.update(usersTable).set({ isAdmin: false }).where(eq(usersTable.id, user.id));
+  return { success: true };
+});
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  auth_identifier TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+-- Enums
+CREATE TYPE employee_type AS ENUM ('Permanent', 'Locum', 'Expat');
+CREATE TYPE attendance_status AS ENUM ('present', 'absent', 'out-duty', 'on-leave');
+CREATE TYPE request_status AS ENUM ('pending', 'manager_approved', 'approved', 'rejected');
+
+-- Extend users table
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS employee_id TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS gender TEXT,
+  ADD COLUMN IF NOT EXISTS dob TEXT,
+  ADD COLUMN IF NOT EXISTS department TEXT,
+  ADD COLUMN IF NOT EXISTS designation TEXT,
+  ADD COLUMN IF NOT EXISTS manager_id INTEGER,
+  ADD COLUMN IF NOT EXISTS employee_type employee_type DEFAULT 'Permanent',
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS is_profile_complete BOOLEAN DEFAULT FALSE;
+
+-- Geofence settings
+CREATE TABLE IF NOT EXISTS geofence_settings (
+  id SERIAL PRIMARY KEY,
+  latitude REAL NOT NULL DEFAULT -1.286389,
+  longitude REAL NOT NULL DEFAULT 36.817223,
+  radius_meters REAL NOT NULL DEFAULT 500,
+  admin_password TEXT NOT NULL DEFAULT 'admin123',
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Insert default geofence settings
+INSERT INTO geofence_settings (latitude, longitude, radius_meters, admin_password)
+VALUES (-1.286389, 36.817223, 500, 'admin123')
+ON CONFLICT DO NOTHING;
+
+-- Attendance records
+CREATE TABLE IF NOT EXISTS attendance_records (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  date DATE NOT NULL,
+  clock_in TIME,
+  clock_out TIME,
+  status attendance_status DEFAULT 'absent',
+  total_hours REAL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, date)
+);
+
+-- Leave types
+CREATE TABLE IF NOT EXISTS leave_types (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  default_accrued_days INTEGER NOT NULL
+);
+
+INSERT INTO leave_types (name, default_accrued_days) VALUES
+  ('Annual Leave', 21),
+  ('Sick Leave', 14),
+  ('Maternity Leave', 90),
+  ('Paternity Leave', 14),
+  ('Compassionate Leave', 5)
+ON CONFLICT (name) DO NOTHING;
+
+-- Leave balances
+CREATE TABLE IF NOT EXISTS leave_balances (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  leave_type_id INTEGER NOT NULL,
+  accrued INTEGER NOT NULL DEFAULT 0,
+  utilized INTEGER NOT NULL DEFAULT 0,
+  year INTEGER NOT NULL,
+  UNIQUE(user_id, leave_type_id, year)
+);
+
+-- Leave requests
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  leave_type_id INTEGER NOT NULL,
+  leave_type_name TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  reason TEXT,
+  status request_status DEFAULT 'pending',
+  manager_approved_at TIMESTAMP,
+  admin_approved_at TIMESTAMP,
+  rejected_at TIMESTAMP,
+  rejected_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Out duty requests
+CREATE TABLE IF NOT EXISTS out_duty_requests (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  purpose TEXT NOT NULL,
+  status request_status DEFAULT 'pending',
+  manager_approved_at TIMESTAMP,
+  admin_approved_at TIMESTAMP,
+  rejected_at TIMESTAMP,
+  rejected_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Employee documents
+CREATE TABLE IF NOT EXISTS employee_documents (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  doc_type TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_blob_id TEXT NOT NULL,
+  uploaded_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, doc_type)
+);
+import {
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  integer,
+  boolean,
+  date,
+  time,
+  real,
+  pgEnum,
+} from 'drizzle-orm/pg-core';
+
+export const employeeTypeEnum = pgEnum('employee_type', ['Permanent', 'Locum', 'Expat']);
+export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'out-duty', 'on-leave']);
+export const requestStatusEnum = pgEnum('request_status', ['pending', 'manager_approved', 'approved', 'rejected']);
+
+export const usersTable = pgTable('users', {
+  id: serial('id').primaryKey(),
+  authIdentifier: text('auth_identifier').notNull().unique(),
+  email: text('email').notNull(),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  avatarUrl: text('avatar_url'),
+  // Extended profile
+  employeeId: text('employee_id').unique(),
+  phone: text('phone'),
+  gender: text('gender'),
+  dob: text('dob'),
+  department: text('department'),
+  designation: text('designation'),
+  managerId: integer('manager_id'),
+  employeeType: employeeTypeEnum('employee_type').default('Permanent'),
+  isAdmin: boolean('is_admin').default(false),
+  isProfileComplete: boolean('is_profile_complete').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const geofenceSettingsTable = pgTable('geofence_settings', {
+  id: serial('id').primaryKey(),
+  latitude: real('latitude').notNull().default(-1.286389),
+  longitude: real('longitude').notNull().default(36.817223),
+  radiusMeters: real('radius_meters').notNull().default(500),
+  adminPassword: text('admin_password').notNull().default('admin123'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const attendanceRecordsTable = pgTable('attendance_records', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  date: date('date').notNull(),
+  clockIn: time('clock_in'),
+  clockOut: time('clock_out'),
+  status: attendanceStatusEnum('status').default('absent'),
+  totalHours: real('total_hours'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const leaveTypesTable = pgTable('leave_types', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  defaultAccruedDays: integer('default_accrued_days').notNull(),
+});
+
+export const leaveBalancesTable = pgTable('leave_balances', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  leaveTypeId: integer('leave_type_id').notNull(),
+  accrued: integer('accrued').notNull().default(0),
+  utilized: integer('utilized').notNull().default(0),
+  year: integer('year').notNull(),
+});
+
+export const leaveRequestsTable = pgTable('leave_requests', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  leaveTypeId: integer('leave_type_id').notNull(),
+  leaveTypeName: text('leave_type_name').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  reason: text('reason'),
+  status: requestStatusEnum('status').default('pending'),
+  managerApprovedAt: timestamp('manager_approved_at'),
+  adminApprovedAt: timestamp('admin_approved_at'),
+  rejectedAt: timestamp('rejected_at'),
+  rejectedReason: text('rejected_reason'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const outDutyRequestsTable = pgTable('out_duty_requests', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  purpose: text('purpose').notNull(),
+  status: requestStatusEnum('status').default('pending'),
+  managerApprovedAt: timestamp('manager_approved_at'),
+  adminApprovedAt: timestamp('admin_approved_at'),
+  rejectedAt: timestamp('rejected_at'),
+  rejectedReason: text('rejected_reason'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const employeeDocumentsTable = pgTable('employee_documents', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  docType: text('doc_type').notNull(),
+  fileName: text('file_name').notNull(),
+  fileBlobId: text('file_blob_id').notNull(),
+  uploadedAt: timestamp('uploaded_at').defaultNow(),
+});
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0.02 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 240);
+  --primary: oklch(0.6 0.15 220);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.01 220);
+  --secondary-foreground: oklch(0.2 0.02 240);
+  --muted: oklch(0.97 0.01 220);
+  --muted-foreground: oklch(0.5 0.02 240);
+  --accent: oklch(0.7 0.2 145);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.02 220);
+  --input: oklch(0.9 0.02 220);
+  --ring: oklch(0.6 0.15 220);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.98 0.01 220);
+  --sidebar-foreground: oklch(0.2 0.02 240);
+  --sidebar-primary: oklch(0.6 0.15 220);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.9 0.02 220);
+  --sidebar-accent-foreground: oklch(0.2 0.02 240);
+  --sidebar-border: oklch(0.9 0.02 220);
+  --sidebar-ring: oklch(0.6 0.15 220);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+}
+
+.dark {
+  --background: oklch(0.2 0.02 240);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.23 0.02 240);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.23 0.02 240);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.7 0.12 220);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.3 0.02 240);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.3 0.02 240);
+  --muted-foreground: oklch(0.7 0.02 240);
+  --accent: oklch(0.75 0.15 145);
+  --accent-foreground: oklch(0.1 0 0);
+  --destructive: oklch(0.4 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.3 0.02 240);
+  --input: oklch(0.3 0.02 240);
+  --ring: oklch(0.7 0.12 220);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.18 0.02 240);
+  --sidebar-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.7 0.12 220);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.25 0.02 240);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.3 0.02 240);
+  --sidebar-ring: oklch(0.7 0.12 220);
+}
+import React, { useState } from 'react';
+import { useGetMe } from '@/server';
+import ProfileSetup from '@/components/ProfileSetup';
+import AppShell from '@/components/AppShell';
+import { usePageTitle } from '@aha-app/builder-core';
+
+export default function IndexPage() {
+  usePageTitle('Hospital Staff Hub');
+
+  const { data: user, loading, refetch } = useGetMe();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground">Loading Staff Hub...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  if (!user.isProfileComplete) {
+    return <ProfileSetup onComplete={refetch} />;
+  }
+
+  return <AppShell user={user} />;
+}
+import { Authenticate } from '@aha-app/builder-core';
+import { Toaster } from 'sonner';
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <Authenticate>
+      <Toaster position="top-right" richColors />
+      {children}
+    </Authenticate>
+  );
+}
+@custom-variant dark (&:is(.dark *));
+
+
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 3);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+// Global type declarations for server-side Node.js globals
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+// Global type declarations for server-side Node.js globals
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}
